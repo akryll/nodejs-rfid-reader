@@ -1,13 +1,13 @@
 {
-  "name": "nodeport",
+  "name": "nodejs-rfid-reader",
   "version": "1.0.0",
   "description": "",
   "main": "main.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
-  "license": "ISC",
+  "author": "Anton Krylov aka akryll",
+  "license": "MIT",
   "dependencies": {
     "binstring": "^0.2.1",
     "serialport": "^2.0.7-beta5"

@@ -1,44 +1,106 @@
-var serialport = require('serialport');
-var SerialPort = serialport.SerialPort;
+import SerialPort from 'serialport'
+import { find } from 'lodash-es'
+const allowedCards = [
+  '1675585/25/37185'
+]
+class CardReader {
+  floodTimeout = 5000
+  reader = null
+  cards = []
+  floodTimer = null
+  card = {
+    raw: '',
+    key: '',
+    fid: '',
+    kid: '',
+    str: ''
+  }
+  constructor(port, baudRate, cardReadHandler = null) {
+    if (!port) {
+      throw new Error('Не указан порт');
+    }
+    if (!baudRate) {
+      throw new Error('Не указана скорость порта')
+    }
 
-var port = new SerialPort('/dev/tty.usbserial-A501JVJ5', {
-  baudrate: 9600,
-  parser: serialport.parsers.raw
-});
-//10002C32E1EF
-//1..........13
-var dataz  = '';
-var cards = [];
-var card = {all:"",key:"",fid:"",kid:""};
+    if (cardReadHandler) {
+      this.cardReadHandler = cardReadHandler
+    } else {
+      this.cardReadHandler = this.defaultCardReadHandler
+    }
 
-port.on('data', function(data) {
-    dataz += new Buffer(data);
-    if(dataz.length == 14){
+    this.init()
+  }
 
-      var newcard = card;
-      newcard.all = dataz.substring(1, 13);
-      newcard.key = parseInt(dataz.substring(3,11), 16);
-      newcard.fid = parseInt(dataz.substring(5,7), 16);
-      newcard.kid = parseInt(dataz.substring(7,11), 16);
-      var exist = 0;
-      cards.forEach(function(val,key){
-        if(val.key == newcard.key){
-          exist = 1;
+  init () {
+    this.reader = new SerialPort('COM3', {
+      baudRate: 9600,
+    });
+    if (this.reader !== null) {
+      this.attachEvents()
+    }
+  }
+
+  attachEvents() {
+    let rawCard = ''
+    let prevRawCard = ''
+    this.reader.on('data', (data) => {
+      rawCard += new Buffer(data);
+      if(rawCard.length === 14) {
+        if (rawCard !== prevRawCard) {
+          this.parsePacket(rawCard)
+          prevRawCard = rawCard
+          clearTimeout(this.floodTimer)
+          this.floodTimer = setTimeout(function () {
+            prevRawCard = ''
+          }, this.floodTimeout)
         }
-      });
-      if(exist == 0){
-        console.log('here');
-        cards.push(newcard);
-        exist = 0;
+        rawCard = ''
       }
+    });
+  }
 
-      console.log('data received: ', dataz.substring(1, 13));
-      console.log('KEY:', parseInt(dataz.substring(3,11), 16));
-      console.log('FID:', parseInt(dataz.substring(5,7), 16));
-      console.log('KID:', parseInt(dataz.substring(7,11), 16));
+  parsePacket (packet) {
+    const debug = false
+    if (debug) {
+      console.log('data received: ', packet.substring(1, 13));
+      console.log('KEY:', parseInt(packet.substring(3,11), 16));
+      console.log('FID:', parseInt(packet.substring(5,7), 16));
+      console.log('KID:', parseInt(packet.substring(7,11), 16));
       console.log('--------');
-      console.log('Cards:', cards);
-      dataz = '';
+    }
+    const card = Object.assign({}, this.card)
+    card.raw = packet.substring(1, 13);
+    card.key = parseInt(packet.substring(3,11), 16);
+    card.fid = parseInt(packet.substring(5,7), 16);
+    card.kid = parseInt(packet.substring(7,11), 16);
+    card.str = `${card.key}/${card.fid}/${card.kid}`
+    const exist = find(this.cards, {raw: card.raw})
+    if (exist === undefined) {
+      this.cards.push(card)
 
     }
-});
+    this.cardReadHandler(card)
+  }
+  defaultCardReadHandler(card) {
+    console.log('Card:')
+    console.log('-------------')
+    console.log(card.str)
+    console.log(card)
+  }
+}
+const cardReadHandler = (card) => {
+  // console.log(card)
+  const check = allowedCards.indexOf(card.str)
+  if (check !== -1) {
+    console.log('CARD ALLOWED!')
+  } else {
+    console.log('CARD NOT ALLOWED')
+  }
+}
+
+new CardReader(
+  'COM3',
+  9600,
+  cardReadHandler
+)
